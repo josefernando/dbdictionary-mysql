@@ -183,7 +183,7 @@ select  data_cotacao
         where data_cotacao between '20190601' and '20190915'
 		and codigo_negociacao_papel = 'PMAM3';
 
-LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_A2019.LOAD'  
+LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_M072020.LOAD'  
 ignore
 INTO TABLE tb_cotacao FIELDS TERMINATED BY ',' LINES TERMINATED BY '\r\n' 
 ( 
@@ -214,6 +214,7 @@ codigo_interno_papel,
 numero_distrib_papel
 );
 
+select max(data_cotacao) from tb_cotacao;
 -- ===========================================================================================================
 DROP PROCEDURE IF EXISTS IS_FERIADO;
 DELIMITER //
@@ -339,8 +340,15 @@ DROP PROCEDURE IF EXISTS FIND_OPORTUNITY;
       ?2.3. O volume de negócios (somatória dos valores das transaçõa) é mais que o volue de negócios do pregão anterior?
 */
 DELIMITER //
-CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20), start_date varchar(10), OUT count int)
+CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
+                                  , start_date varchar(10)
+                                  , price_percent_param tinyint
+                                  , total_negocios_percent_param tinyint
+                                  , total_negocios_param int
+                                  , OUT win_dates varchar(255)
+                                  , OUT lose_dates varchar(10000))
 	BEGIN
+        -- working vars
 		DECLARE finished INTEGER DEFAULT 0;
         
         -- into vars
@@ -351,50 +359,80 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20), start_date varchar(10)
         DECLARE wtotal_negocios int;
 	    DECLARE wtotal_titulos_negociados bigint;
         DECLARE wvolume_titulos_negociados decimal(18,2);
+        
+        -- algorith vars
+        DECLARE wresultado_preco_fechamento decimal(5,2) DEFAULT 0;
+   	    DECLARE wresultado_total_negocios int DEFAULT 0;
+   	    DECLARE wpreco_fechamento_ant decimal(5,2) DEFAULT 0;
+	    DECLARE wtotal_negocios_ant int DEFAULT 0;
 
+--
 		DECLARE curStockTrade
 			CURSOR FOR 
 				select  data_cotacao
 					,codigo_negociacao_papel
-					,preco_abertura
+  					,preco_abertura
 					,preco_fechamento
 					,total_negocios
-					,total_titulos_negociados
-					,volume_titulos_negociados
-					from tb_cotacao 
+					from tb_cotacao
 					where codigo_negociacao_papel = stock_code
-						and data_cotacao between start_date and NOW();
+					and data_cotacao between start_date and NOW();
 
 		-- declare NOT FOUND handler
 		DECLARE CONTINUE HANDLER 
 			FOR NOT FOUND SET finished = 1; 
             
         OPEN curStockTrade;   
-        
-        SET count = 0;
-        
+        SET win_dates = ' ';
+        SET lose_dates = ' ';
+
         fetch_trading: REPEAT
            FETCH curStockTrade INTO   wdata_cotacao
 					, wcodigo_negociacao_papel
-					, wpreco_abertura
+   					, wpreco_abertura
 					, wpreco_fechamento
-					, wtotal_negocios
-					, wtotal_titulos_negociados
-					, wvolume_titulos_negociados;
+					, wtotal_negocios;
                     
-                    SET count = count + 1;
-/*
----------------------------------------------------------------------------                    
-		IF finished = 1 THEN 
-			LEAVE fetch_trading;
-		END IF;
-----------------------------------------------------------------------------
-*/        
+            IF finished = 1 THEN 
+				LEAVE fetch_trading;
+		    END IF;
+  
+           IF wtotal_negocios_ant > 0  -- nao é o primeiro fetch
+              THEN
+                 SET wresultado_preco_fechamento = (wpreco_fechamento/wpreco_fechamento_ant - 1) * 100;
+               
+                 SET wresultado_total_negocios = (wtotal_negocios/wtotal_negocios_ant -1) * 100; 
+             
+                 if wresultado_preco_fechamento > price_percent_param AND (wresultado_total_negocios > total_negocios_percent_param or wtotal_negocios > total_negocios_param)  then 
+                    SET win_dates = concat(win_dates, ', ' , wdata_cotacao);
+--				 else 
+--                    SET lose_dates = concat(lose_dates, ', wdata_cotacao: ' , wdata_cotacao, ', wpreco_fechamentot: ', wpreco_fechamento, ' wpreco_fechamento_ant ',  wpreco_fechamento_ant , ' , total_negocios: ' , wtotal_negocios, ' xx ');
+                 end if;
+           END IF;        
+           
+           set wpreco_fechamento_ant = wpreco_fechamento;
+           set wtotal_negocios_ant = wtotal_negocios;
+        
          UNTIL finished = 1 END REPEAT fetch_trading;
-		
- --       SET count = finished;
+         
+         CLOSE curStockTrade; 
+       
 END   //
 DELIMITER ;
 
-CALL FIND_OPORTUNITY ('BBDC4', '2020-07-01', @count );
-select @count;
+CALL FIND_OPORTUNITY ('irbr3', '2019-01-01', 8, 2, 10000, @winner_dates, @loser_dates);
+select @winner_dates, @loser_dates;
+
+				select  data_cotacao
+					,codigo_negociacao_papel
+   					,preco_abertura
+					,preco_fechamento
+					,total_negocios
+					from tb_cotacao 
+					where codigo_negociacao_papel = 'COGN3'
+					and data_cotacao between '2020-07-28' and '2020-07-29';
+                    
+				select  distinct codigo_negociacao_papel
+					from tb_cotacao 
+					where total_negocios > 10000
+					and data_cotacao between  '2020-07-01'  and now();              
