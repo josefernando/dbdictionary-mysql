@@ -1,7 +1,7 @@
 use b3;
 -- ====================================================================================================================
 
-drop table IF EXISTS tb_cotacao;
+-- drop table IF EXISTS tb_cotacao;
 
 create table  tb_cotacao (
 id int NOT NULL AUTO_INCREMENT,
@@ -46,19 +46,19 @@ commit;
 -- DROP INDEX codigo_negociacao_papel_ix ON tb_cotacao;
 
 -- IMPORTANTE: Index non-clustered, por conta de ENGINE=MYISAM
-CREATE UNIQUE INDEX codigo_negociacao_papel_ix ON tb_cotacao (codigo_negociacao_papel, data_cotacao, prazo_dias_mercado_termo);
+CREATE UNIQUE INDEX codigo_negociacao_papel_ix ON tb_cotacao (codigo_negociacao_papel, codigo_bdi, data_cotacao, prazo_dias_mercado_termo);
 commit;
-
-select * from tb_cotacao where data_cotacao = '20200618' LIMIT 10;
 
 -- IMPORTANTE: Index non-clustered, por conta de ENGINE=MYISAM
 CREATE INDEX data_cotacao_ix ON tb_cotacao (data_cotacao, codigo_negociacao_papel);
 commit;
 
+select count(*) from tb_cotacao;
+
 -- ====================================================================================================================
 use b3;
 
-drop table IF EXISTS tb_feriado;
+-- drop table IF EXISTS tb_feriado;
 
 create table  tb_feriado (
 id int NOT NULL AUTO_INCREMENT,
@@ -98,11 +98,10 @@ INSERT INTO tb_feriado (data, descricao) VALUES ('20201225', 'Natal');
 INSERT INTO tb_feriado (data, descricao) VALUES ('20201231', 'Expediente interno');
 INSERT INTO tb_feriado (data, descricao) VALUES ('20210101', 'Ano Novo');
 
-select * from tb_feriado;
 -- =======================================================================================================================
 use b3;
 
-drop table IF EXISTS tb_intraday_trade;
+-- drop table IF EXISTS tb_intraday_trade;
 
 -- layout ref.: http://www.b3.com.br/data/files/4F/91/A8/CD/2A280710E7BCA507DC0D8AA8/TradeIntradayFile.pdf
 create table  tb_intraday_trade (
@@ -124,7 +123,6 @@ ENGINE = MYISAM;  --  única maneira de criar non clustered
 CREATE UNIQUE INDEX intraday_trade_ix0 ON tb_intraday_trade (data_referencia , hora_negocio, codigo_negociacao_papel, id_negocio);
 commit;
 
-select count(*)  from tb_intraday_trade where codigo_negociacao_papel = 'VVAR3';
 -- ============================================== LOAD  INTRADAY TRADE  ==================================================
 -- download page: http://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/cotacoes/cotacoes/
 use b3;
@@ -149,16 +147,14 @@ SET preco_negocio = REPLACE(@preco_negocio, ',', '.'),
 ;
 -- =======================================================================================================================
 
-select count(*) from tb_intraday_trade;
--- =======================================================================================================================
 select * from tb_cotacao where codigo_negociacao_papel = 'BBDC4';
 
 select count(*) from tb_cotacao;
 
 select * from tb_cotacao tcot where codigo_negociacao_papel = 'BBDC4' 
                               and tcot.data_cotacao = '2020-06-08';
-truncate tb_cotacao;
-truncate tb_cotacao;
+-- truncate tb_cotacao;
+-- truncate tb_cotacao;
 set autocommit = 0;
 set unique_checks = 0;
 set foreign_key_checks = 0;
@@ -182,9 +178,14 @@ select  data_cotacao
         from tb_cotacao 
         where data_cotacao between '20190601' and '20190915'
 		and codigo_negociacao_papel = 'PMAM3';
+        
+-- ======================================================================================================================        
+ truncate table tb_cotacao;
 
-LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_M072020.LOAD'  
-ignore
+select count(*) from  tb_cotacao;
+
+LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_A2020.LOAD'  
+-- ignore
 INTO TABLE tb_cotacao FIELDS TERMINATED BY ',' LINES TERMINATED BY '\r\n' 
 ( 
 data_cotacao,
@@ -233,6 +234,7 @@ DELIMITER ;
 CALL IS_FERIADO('20200101', @isferiado);
 SELECT @isferiado;
 
+-- ============================================================================================================
 DROP PROCEDURE IF EXISTS FIND_NEGOTIATED_PAPERS_BY_DATE;
 DELIMITER //
 CREATE PROCEDURE FIND_NEGOTIATED_PAPERS_BY_DATE ( date varchar(10))
@@ -243,7 +245,7 @@ BEGIN
 END   //
 DELIMITER ;
 
-
+-- ==========================================================================================================
 DROP PROCEDURE IF EXISTS FIND_NEGOTIATED_PAPERS_BETWEEN_DATES;
 DELIMITER //
 CREATE PROCEDURE FIND_NEGOTIATED_PAPERS_BETWEEN_DATES ( startDate varchar(10), endDate varchar(10))
@@ -256,6 +258,8 @@ BEGIN
 END   //
 DELIMITER ;
 
+
+-- ============================================================================================================
 DROP PROCEDURE IF EXISTS FIND_NEGOTIATED_STOCK_SYMBOL_BETWEEN_DATES;
 DELIMITER //
 CREATE PROCEDURE FIND_NEGOTIATED_STOCK_SYMBOL_BETWEEN_DATES ( startDate varchar(10), endDate varchar(10))
@@ -274,6 +278,7 @@ call FIND_NEGOTIATED_PAPERS_BY_DATE('20200407');
 
 call FIND_NEGOTIATED_PAPERS_BETWEEN_DATES('2020-04-07', '2020-04-08' );
 
+-- =============================================================================================================
 DROP PROCEDURE IF EXISTS GET_NEGOTIATED_PAPERS_BETWEEN_DATES;
 DELIMITER //
 CREATE PROCEDURE GET_NEGOTIATED_PAPERS_BETWEEN_DATES ( paper varchar(10), startDate varchar(10), endDate varchar(10))
@@ -285,11 +290,6 @@ END   //
 DELIMITER ;
 
 call GET_NEGOTIATED_PAPERS_BETWEEN_DATES('MGL', '2020-04-07', '2020-04-08' );
-
-SELECT distinct codigo_negociacao_papel FROM tb_cotacao WHERE 
-
-codigo_negociacao_papel like 'MGL%'
-and data_cotacao between '2020-04-07' and '2020-04-08';
 
 -- ==========================================================================================================
 DROP PROCEDURE IF EXISTS FIND_ORPREVIOUS_BUSINESS_DAY;
@@ -310,6 +310,7 @@ DELIMITER ;
 CALL FIND_ORPREVIOUS_BUSINESS_DAY ('2020-12-24', @orD);
 select @orD;
 
+-- ===============================================================================================================
 DROP PROCEDURE IF EXISTS FIND_ORNEXT_BUSINESS_DAY;
 DELIMITER //
 CREATE PROCEDURE FIND_ORNEXT_BUSINESS_DAY (date varchar(10), OUT orDate varchar(10))
@@ -326,6 +327,8 @@ END   //
 DELIMITER ;
 CALL FIND_ORNEXT_BUSINESS_DAY ('2020-09-07', @orend );
 select @orend;
+
+
 -- ================================================================================================================
 USE b3;
 
@@ -344,9 +347,7 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
                                   , start_date varchar(10)
                                   , price_percent_param tinyint
                                   , total_negocios_percent_param tinyint
-                                  , total_negocios_param int
-                                  , OUT win_dates varchar(255)
-                                  , OUT lose_dates varchar(10000))
+                                  , total_negocios_param int)
 	BEGIN
         -- working vars
 		DECLARE finished INTEGER DEFAULT 0;
@@ -382,9 +383,20 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
 		DECLARE CONTINUE HANDLER 
 			FOR NOT FOUND SET finished = 1; 
             
+        DROP TEMPORARY TABLE if exists tmp_result ;
+        
+        CREATE TEMPORARY TABLE tmp_result (	data_cotacao varchar(10),
+				codigo_negociacao_papel varchar(12),
+				preco_fechamento_ant decimal(13,2) ,
+				preco_fechamento decimal(13,2) ,
+                result_fechamento decimal (6,2),
+                result_negocios   decimal (6,2),
+			    total_negocios int
+        );
+            
+            
+            
         OPEN curStockTrade;   
-        SET win_dates = ' ';
-        SET lose_dates = ' ';
 
         fetch_trading: REPEAT
            FETCH curStockTrade INTO   wdata_cotacao
@@ -404,9 +416,8 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
                  SET wresultado_total_negocios = (wtotal_negocios/wtotal_negocios_ant -1) * 100; 
              
                  if wresultado_preco_fechamento > price_percent_param AND (wresultado_total_negocios > total_negocios_percent_param or wtotal_negocios > total_negocios_param)  then 
-                    SET win_dates = concat(win_dates, ', ' , wdata_cotacao);
---				 else 
---                    SET lose_dates = concat(lose_dates, ', wdata_cotacao: ' , wdata_cotacao, ', wpreco_fechamentot: ', wpreco_fechamento, ' wpreco_fechamento_ant ',  wpreco_fechamento_ant , ' , total_negocios: ' , wtotal_negocios, ' xx ');
+--                    SET win_dates = concat(win_dates, ', ' , wdata_cotacao);
+                 insert into tmp_result values ( wdata_cotacao, wcodigo_negociacao_papel, wpreco_fechamento_ant, wpreco_fechamento, wresultado_preco_fechamento, wresultado_total_negocios, wtotal_negocios);
                  end if;
            END IF;        
            
@@ -416,12 +427,13 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
          UNTIL finished = 1 END REPEAT fetch_trading;
          
          CLOSE curStockTrade; 
+         
+         select * from tmp_result;
        
 END   //
 DELIMITER ;
 
-CALL FIND_OPORTUNITY ('irbr3', '2019-01-01', 8, 2, 10000, @winner_dates, @loser_dates);
-select @winner_dates, @loser_dates;
+CALL FIND_OPORTUNITY ('irbr3', '2019-01-01', 8, 2, 10000);
 
 				select  data_cotacao
 					,codigo_negociacao_papel
@@ -429,8 +441,8 @@ select @winner_dates, @loser_dates;
 					,preco_fechamento
 					,total_negocios
 					from tb_cotacao 
-					where codigo_negociacao_papel = 'COGN3'
-					and data_cotacao between '2020-07-28' and '2020-07-29';
+					where codigo_negociacao_papel = 'IRBR3'
+					and data_cotacao between '2019-01-01' and '2020-07-29';
                     
 				select  distinct codigo_negociacao_papel
 					from tb_cotacao 

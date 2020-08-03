@@ -39,8 +39,8 @@ use b3;
 select codigo_negociacao_papel, data_pregao, preco_fechamento from pregao_b3 where codigo_negociacao_papel = 'bova11' and   data_pregao between '20200601' and '20200715';   
     
 -- ======================================================================================================
-    SET @start_date = '2020-07-20';
-    SET @end_date   = '2020-07-21';
+    SET @start_date = '2020-07-21';
+    SET @end_date   = '2020-07-22';
     -- data;título;?;valor;quantidade;horário;número da operação;?;data?
     -- 2020-07-10;VVAR3;0;17,690;3900;175957990;878390;1;2020-07-10
     -- 2020-07-10;VVAR3;0;17,690;3100;175958277;878400;1;2020-07-10
@@ -79,17 +79,17 @@ select codigo_negociacao_papel, data_pregao, preco_fechamento from pregao_b3 whe
                          or T1.codigo_negociacao_papel = 'BRFS3'
                          or T1.codigo_negociacao_papel = 'JBSS3')
 */
-
+/*
                       and ( T1.codigo_negociacao_papel = 'VVAR3'
                          or T1.codigo_negociacao_papel = 'BTOW3'
                          or T1.codigo_negociacao_papel = 'LAME4'
                          or T1.codigo_negociacao_papel = 'MGLU3')
-
+*/
 /*
                       and ( T1.codigo_negociacao_papel = 'CRFB3'
                          or T1.codigo_negociacao_papel = 'PCAR3')
 */
-/*
+
                       and ( T1.codigo_negociacao_papel = 'VALE3'
                          or T1.codigo_negociacao_papel = 'BOVA11'
                          or T1.codigo_negociacao_papel = 'ITUB4'
@@ -112,7 +112,7 @@ select codigo_negociacao_papel, data_pregao, preco_fechamento from pregao_b3 whe
                          or T1.codigo_negociacao_papel = 'KROT3'
                          or T1.codigo_negociacao_papel = 'EQTL3' 
                          or T1.codigo_negociacao_papel = 'ABEV3')
- */
+ 
                     order by resultado desc ;
                                 
 -- ===================================== PREÇO MÍNIMO  --------------------------------------------------------------------
