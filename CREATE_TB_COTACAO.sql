@@ -328,6 +328,67 @@ DELIMITER ;
 CALL FIND_ORNEXT_BUSINESS_DAY ('2020-09-07', @orend );
 select @orend;
 
+-- ================================================================================================================
+use b3;
+
+DROP PROCEDURE IF EXISTS FIND_OPORTUNITIES;
+
+DELIMITER //
+CREATE PROCEDURE FIND_OPORTUNITIES (  start_date varchar(10)
+                                  , price_percent_param tinyint
+                                  , total_negocios_percent_param tinyint
+                                  , total_negocios_param int)
+	BEGIN
+       -- working vars
+		DECLARE finished INTEGER DEFAULT 0;
+
+        -- into vars
+        DECLARE wcodigo_negociacao_papel varchar(12);
+
+--
+		DECLARE curStockSymbols
+			CURSOR FOR 
+				select  distinct codigo_negociacao_papel
+					from tb_cotacao
+					where data_cotacao between start_date and NOW()
+                    and length(codigo_negociacao_papel) < 7;
+--                    limit 100;
+
+		-- declare NOT FOUND handler
+		DECLARE CONTINUE HANDLER 
+			FOR NOT FOUND SET finished = 1; 
+ 
+        DROP TEMPORARY TABLE if exists tmp_result ;
+        
+        CREATE TEMPORARY TABLE tmp_result (	data_cotacao varchar(10),
+				codigo_negociacao_papel varchar(12),
+				preco_fechamento_ant decimal(13,2) ,
+				preco_fechamento decimal(13,2) ,
+                result_fechamento decimal (13,2),
+                result_negocios   decimal (13,2),
+			    total_negocios int,
+                volume_titulos_negociados decimal(18,2) 
+        );
+            
+        OPEN curStockSymbols;   
+
+        fetch_symbols: REPEAT
+           FETCH curStockSymbols INTO   wcodigo_negociacao_papel;
+                   
+           CALL FIND_OPORTUNITY (wcodigo_negociacao_papel, start_date , price_percent_param, total_negocios_percent_param, total_negocios_param);         
+                    
+            IF finished = 1 THEN 
+				LEAVE fetch_symbols;
+		    END IF;
+        
+         UNTIL finished = 1 END REPEAT fetch_symbols;
+         
+         CLOSE curStockSymbols; 
+         
+         select * from tmp_result;
+	END   //
+DELIMITER ;                                  
+
 
 -- ================================================================================================================
 USE b3;
@@ -351,7 +412,7 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
 	BEGIN
         -- working vars
 		DECLARE finished INTEGER DEFAULT 0;
-        
+
         -- into vars
 		DECLARE wdata_cotacao varchar(10);
         DECLARE wcodigo_negociacao_papel varchar(12);
@@ -362,9 +423,9 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
         DECLARE wvolume_titulos_negociados decimal(18,2);
         
         -- algorith vars
-        DECLARE wresultado_preco_fechamento decimal(5,2) DEFAULT 0;
+        DECLARE wresultado_preco_fechamento decimal(13,2) DEFAULT 0;
    	    DECLARE wresultado_total_negocios int DEFAULT 0;
-   	    DECLARE wpreco_fechamento_ant decimal(5,2) DEFAULT 0;
+   	    DECLARE wpreco_fechamento_ant decimal(13,2) DEFAULT 0;
 	    DECLARE wtotal_negocios_ant int DEFAULT 0;
 
 --
@@ -375,6 +436,7 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
   					,preco_abertura
 					,preco_fechamento
 					,total_negocios
+                    ,volume_titulos_negociados
 					from tb_cotacao
 					where codigo_negociacao_papel = stock_code
 					and data_cotacao between start_date and NOW();
@@ -382,7 +444,7 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
 		-- declare NOT FOUND handler
 		DECLARE CONTINUE HANDLER 
 			FOR NOT FOUND SET finished = 1; 
-            
+/*
         DROP TEMPORARY TABLE if exists tmp_result ;
         
         CREATE TEMPORARY TABLE tmp_result (	data_cotacao varchar(10),
@@ -393,9 +455,7 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
                 result_negocios   decimal (6,2),
 			    total_negocios int
         );
-            
-            
-            
+*/          
         OPEN curStockTrade;   
 
         fetch_trading: REPEAT
@@ -403,7 +463,8 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
 					, wcodigo_negociacao_papel
    					, wpreco_abertura
 					, wpreco_fechamento
-					, wtotal_negocios;
+					, wtotal_negocios
+                    , wvolume_titulos_negociados;
                     
             IF finished = 1 THEN 
 				LEAVE fetch_trading;
@@ -415,9 +476,9 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
                
                  SET wresultado_total_negocios = (wtotal_negocios/wtotal_negocios_ant -1) * 100; 
              
-                 if wresultado_preco_fechamento > price_percent_param AND (wresultado_total_negocios > total_negocios_percent_param or wtotal_negocios > total_negocios_param)  then 
---                    SET win_dates = concat(win_dates, ', ' , wdata_cotacao);
-                 insert into tmp_result values ( wdata_cotacao, wcodigo_negociacao_papel, wpreco_fechamento_ant, wpreco_fechamento, wresultado_preco_fechamento, wresultado_total_negocios, wtotal_negocios);
+--                 if wresultado_preco_fechamento > price_percent_param AND (wresultado_total_negocios > total_negocios_percent_param or wtotal_negocios > total_negocios_param)  then 
+                 if wresultado_preco_fechamento > price_percent_param AND (wtotal_negocios > total_negocios_param)  then 
+                 insert into tmp_result values ( wdata_cotacao, wcodigo_negociacao_papel, wpreco_fechamento_ant, wpreco_fechamento, wresultado_preco_fechamento, wresultado_total_negocios, wtotal_negocios,wvolume_titulos_negociados);
                  end if;
            END IF;        
            
@@ -428,12 +489,13 @@ CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
          
          CLOSE curStockTrade; 
          
-         select * from tmp_result;
+ --       select * from tmp_result;
        
 END   //
 DELIMITER ;
 
-CALL FIND_OPORTUNITY ('irbr3', '2019-01-01', 8, 2, 10000);
+CALL FIND_OPORTUNITIES ( '2020-07-28', 10, 10, 100);
+CALL FIND_OPORTUNITY ('irbr3', '2020-01-28', 3, 2, 10000);
 
 				select  data_cotacao
 					,codigo_negociacao_papel
@@ -441,10 +503,16 @@ CALL FIND_OPORTUNITY ('irbr3', '2019-01-01', 8, 2, 10000);
 					,preco_fechamento
 					,total_negocios
 					from tb_cotacao 
-					where codigo_negociacao_papel = 'IRBR3'
-					and data_cotacao between '2019-01-01' and '2020-07-29';
+					where codigo_negociacao_papel = 'A1MD34'
+					and data_cotacao between '2020-07-20' and NOW();
                     
 				select  distinct codigo_negociacao_papel
 					from tb_cotacao 
 					where total_negocios > 10000
-					and data_cotacao between  '2020-07-01'  and now();              
+					and data_cotacao between  '2020-07-01'  and now();  
+                    
+                    select  distinct codigo_negociacao_papel 
+					from tb_cotacao
+					where data_cotacao between '2020-07-20' and NOW()
+                    limit 10;
+                    
