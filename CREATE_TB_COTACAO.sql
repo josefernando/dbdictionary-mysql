@@ -120,14 +120,16 @@ PRIMARY KEY (id)
 )
 ENGINE = MYISAM;  --  única maneira de criar non clustered
 
-CREATE UNIQUE INDEX intraday_trade_ix0 ON tb_intraday_trade (data_referencia , hora_negocio, codigo_negociacao_papel, id_negocio);
-commit;
+-- ALTER TABLE tb_intraday_trade DROP INDEX intraday_trade_ix0;
+
+CREATE UNIQUE INDEX intraday_trade_ix0 ON tb_intraday_trade (data_pregao , hora_negocio, codigo_negociacao_papel, id_negocio);
+-- commit;
 
 -- ============================================== LOAD  INTRADAY TRADE  ==================================================
 -- download page: http://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/cotacoes/cotacoes/
 use b3;
 
-LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\TradeIntraday_20200714_1.txt'
+LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\TradeIntraday_20200717_1.txt'
 IGNORE
 INTO TABLE tb_intraday_trade FIELDS TERMINATED BY ';' LINES TERMINATED BY '\n' IGNORE 1 lines
 ( 
@@ -145,6 +147,8 @@ data_pregao
 SET preco_negocio = REPLACE(@preco_negocio, ',', '.'),
     hora_negocio = @hora_negocio/1000
 ;
+
+select count(*) from tb_intraday_trade;
 -- =======================================================================================================================
 
 select * from tb_cotacao where codigo_negociacao_papel = 'BBDC4';
@@ -216,6 +220,22 @@ numero_distrib_papel
 );
 
 select max(data_cotacao) from tb_cotacao;
+-- ===========================================================================================================
+use b3;
+        DROP TABLE IF EXISTS tb_oportunity_intraday;
+
+        CREATE TABLE tb_oportunity_intraday ( data_trade date,
+                ultimo_horario_analisado time,
+				codigo_negociacao_papel varchar(12),
+                preco_abertura decimal(13,3),
+                ultimo_preco   decimal(13,3),
+                ultimo_id      bigint,
+			    total_negocios int,
+                upOrDownUntilNow decimal(13,3),
+                total_up int,    -- número de vezes que o preço subiu
+                total_down int   -- número de vezes que o preço desceu
+        );
+
 -- ===========================================================================================================
 DROP PROCEDURE IF EXISTS IS_FERIADO;
 DELIMITER //
@@ -393,7 +413,7 @@ CREATE PROCEDURE FIND_OPORTUNITIES_DOWN (  start_date varchar(10)
          
          CLOSE curStockSymbols; 
          
-         select * from tmp_result;
+         select * from tmp_result order by codigo_negociacao_papel, data_cotacao;
 	END   //
 DELIMITER ; 
 
@@ -460,9 +480,232 @@ CREATE PROCEDURE FIND_OPORTUNITIES (  start_date varchar(10)
          
          CLOSE curStockSymbols; 
          
-         select * from tmp_result;
+         select * from tmp_result order by codigo_negociacao_papel, data_cotacao;
 	END   //
 DELIMITER ;                                  
+
+-- ================================================================================================================
+USE b3;
+
+DROP PROCEDURE IF EXISTS FIND_OPORTUNITY_INTRADAY;
+
+DELIMITER //
+CREATE PROCEDURE FIND_OPORTUNITY_INTRADAY (start_date varchar(10))
+proc_01:	BEGIN
+        -- working vars
+		DECLARE finished INTEGER DEFAULT 0;
+
+        -- into vars
+		DECLARE wcodigo_negociacao_papel varchar(30);
+		DECLARE wpreco_negocio decimal(13,3);
+		DECLARE wtitulos_negociados bigint;
+		DECLARE whora_negocio time;
+        DECLARE wid_negocio bigint;
+		declare wdata_pregao date;
+        declare wultimo_horario_analisado time;
+        
+        -- ========================================================================================
+        
+        -- algorith vars
+        DECLARE wresultado_preco_negocio decimal(13,3) DEFAULT 0;
+       	DECLARE wUpOrDown decimal(13,3);
+        DECLARE wUpOrDownUntilNow decimal(13,3);
+        DECLARE wtotal_up bigint;
+        DECLARE wtotal_down bigint;
+        
+        -- Error handling 
+          DECLARE code CHAR(5) DEFAULT '00000';
+		  DECLARE msg TEXT;
+		  DECLARE nrows INT;
+		  DECLARE result TEXT;
+
+--
+		DECLARE curTradeIntraDay
+			CURSOR FOR 
+				select    data_pregao
+                        , codigo_negociacao_papel
+                        , preco_negocio
+                        , titulos_negociados
+                        , hora_negocio
+                        , id_negocio
+					from tb_intraday_trade
+					where data_pregao = start_date
+                    and codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
+                    and hora_negocio > wultimo_horario_analisado
+                    and length(codigo_negociacao_papel) < 7
+                    order by data_pregao, hora_negocio
+				;
+                
+		-- declare NOT FOUND handler
+	  DECLARE CONTINUE HANDLER 
+		FOR NOT FOUND SET finished = 1;
+            
+      DECLARE CONTINUE HANDLER
+		FOR SQLEXCEPTION
+			BEGIN
+			  GET DIAGNOSTICS CONDITION 1
+				code = RETURNED_SQLSTATE, msg = MESSAGE_TEXT;
+                select 'code: ' ,code ,'msg: ' ,msg;
+			END;      
+            
+       SELECT coalesce(MAX(ultimo_horario_analisado),0) into wultimo_horario_analisado from tb_oportunity_intraday 
+				where data_trade = start_date;
+                
+        OPEN curTradeIntraDay; 
+        
+        SET @data_trade = null;
+        
+        SET @count = 0;
+        
+   --     select "iniciando ...";
+
+        fetch_trading: REPEAT
+           FETCH curTradeIntraDay INTO   wdata_pregao
+                        , wcodigo_negociacao_papel
+                        , wpreco_negocio
+                        , wtitulos_negociados
+                        , whora_negocio
+                        , wid_negocio ;
+               
+                
+           SET @count = @count + 1;
+         
+            IF finished = 1 THEN 
+   --             select "saindo 001";
+				LEAVE fetch_trading;
+		    END IF;
+
+			select  * into @data_trade,
+                @ultimo_horario_analisado,
+				@codigo_negociacao_papel,
+                @preco_abertura,
+                @ultimo_preco,
+                @ultimo_id,
+			    @total_negocios,
+                @UpOrDownUntilNow,
+                @total_up,    
+                @total_down 
+                from tb_oportunity_intraday
+                where codigo_negociacao_papel = wcodigo_negociacao_papel;
+                
+			IF finished = 1 THEN
+				SET finished = 0;
+				INSERT INTO tb_oportunity_intraday VALUES (
+						  wdata_pregao
+						, whora_negocio
+						, wcodigo_negociacao_papel
+						, wpreco_negocio
+						, wpreco_negocio
+						, wid_negocio 
+						, wtitulos_negociados
+						, 0           -- UpOrDownUntilNow
+						, 0           -- total_up
+						, 0);         -- total_down
+						
+				IF code = '00000' THEN
+					GET DIAGNOSTICS nrows = ROW_COUNT;
+   	--				select '...inserted for codigo_negociacao_papel: ' 
+	--						   , wcodigo_negociacao_papel;
+                 ELSE   
+					leave fetch_trading;
+				END IF; 
+                
+				IF nrows = 0 THEN
+	--				select '0 rows inserted for codigo_negociacao_papel: ' 
+	--						   , wcodigo_negociacao_papel;
+					leave fetch_trading;       
+				END IF;
+            ELSE 
+				SET wUpOrDown = (wpreco_negocio / @ultimo_preco - 1) * 100;
+                SET wUpOrDownUntilNow = (wpreco_negocio / @preco_abertura - 1) * 100;
+                
+                SET wtotal_up = 0;
+                SET wtotal_down = 0;
+
+				IF wUpOrDown > 0 THEN
+						SET wtotal_up = @total_up + 1;
+					ELSEIF wUpOrDown < 0 THEN
+						SET wtotal_down = @total_down + 1;
+				END IF;
+                
+				UPDATE tb_oportunity_intraday
+					SET ultimo_horario_analisado = whora_negocio,
+						ultimo_preco = wpreco_negocio,
+						total_negocios = @total_negocios + wtitulos_negociados,
+						ultimo_id = wid_negocio,
+                        upOrDownUntilNow = wUpOrDownUntilNow,
+                        total_up  = wtotal_up,   
+						total_down = wtotal_down
+                    WHERE codigo_negociacao_papel = wcodigo_negociacao_papel;
+              END IF;
+			  IF code = '00000' THEN
+				GET DIAGNOSTICS nrows = ROW_COUNT;
+			  else 
+				leave fetch_trading; 
+			  END IF;    
+              
+		      IF nrows = 0 THEN
+					leave fetch_trading;       
+			  END IF;
+
+         UNTIL finished = 1 END REPEAT fetch_trading;
+         CLOSE curTradeIntraDay; 
+END   //
+DELIMITER ;
+
+select @count;
+
+CALL FIND_OPORTUNITY_INTRADAY ('20200717');
+
+				select    data_pregao
+                        , codigo_negociacao_papel
+                        , preco_negocio
+                        , titulos_negociados
+                        , hora_negocio
+                        , id_negocio
+					from tb_intraday_trade
+					where data_pregao = '20200716'
+                    and hora_negocio >=  0
+                    and length(codigo_negociacao_papel) < 7
+                    order by data_pregao, hora_negocio;
+        
+select count(*) from tb_intraday_trade where   codigo_negociacao_papel = 'TF723';      
+        
+select *   from tb_oportunity_intraday order by upOrDownUntilNow desc;
+
+				select    data_pregao
+                        , codigo_negociacao_papel
+                        , preco_negocio
+                        , titulos_negociados
+                        , hora_negocio
+                        , id_negocio
+					from tb_intraday_trade
+					where data_pregao = '20200717'
+                    and  codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
+                    and hora_negocio > 0
+                    and length(codigo_negociacao_papel) < 7
+                    order by data_pregao, hora_negocio;
+                    
+                    select 'ITUB4' regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}';
+                    
+
+-- ===========================================================================================================
+use b3;
+        DROP TABLE IF EXISTS tb_oportunity_intraday;
+
+        CREATE TABLE tb_oportunity_intraday ( data_trade date,
+                ultimo_horario_analisado time,
+				codigo_negociacao_papel varchar(12),
+                preco_abertura decimal(13,3),
+                ultimo_preco   decimal(13,3),
+                ultimo_id      bigint,
+			    total_negocios int,
+                upOrDownUntilNow decimal(13,3),
+                total_up int,    -- número de vezes que o preço subiu
+                total_down int   -- número de vezes que o preço desceu
+        );
+
+-- ===========================================================================================================
 
 -- ================================================================================================================
 USE b3;
@@ -568,114 +811,14 @@ CREATE PROCEDURE FIND_OPORTUNITY_DOWN (stock_code varchar(20)
 END   //
 DELIMITER ;
 -- ================================================================================================================
-USE b3;
+-- ================================================================================================================
 
-DROP PROCEDURE IF EXISTS FIND_OPORTUNITY;
-/*
-   Pesquisa oportunidades de bons resultados analisando dados históricos da ação conforme algoritmo a seguir:
-   1. Definir uma data  de "base line" para se estabelecer possibilidade de bons resultados
-   2. Caso as seguintes afirmações sejam verdadeiras então nesta data houve uma possibilidade de aumento do valor da ação
-      de  modo a proporcionar ganhos imediatos:
-      ?2.1. O valor da ação desta data é mais que dobro da média do valor deste o início da data base line?
-      ?2.2. A total de negócios (transações)  é mais que  dobro da quantidade de negócio do pregão anterior?
-      ?2.3. O volume de negócios (somatória dos valores das transaçõa) é mais que o volue de negócios do pregão anterior?
-*/
-DELIMITER //
-CREATE PROCEDURE FIND_OPORTUNITY (stock_code varchar(20)
-                                  , start_date varchar(10)
-                                  , price_percent_param tinyint
-                                  , total_negocios_percent_param tinyint
-                                  , total_negocios_param int)
-	BEGIN
-        -- working vars
-		DECLARE finished INTEGER DEFAULT 0;
 
-        -- into vars
-		DECLARE wdata_cotacao varchar(10);
-        DECLARE wcodigo_negociacao_papel varchar(12);
-        DECLARE wpreco_abertura decimal(13,2) ;
-	    DECLARE wpreco_fechamento decimal(13,2) ;
-        DECLARE wtotal_negocios int;
-	    DECLARE wtotal_titulos_negociados bigint;
-        DECLARE wvolume_titulos_negociados decimal(18,2);
-        
-        -- algorith vars
-        DECLARE wresultado_preco_fechamento decimal(13,2) DEFAULT 0;
-   	    DECLARE wresultado_total_negocios int DEFAULT 0;
-   	    DECLARE wpreco_fechamento_ant decimal(13,2) DEFAULT 0;
-	    DECLARE wtotal_negocios_ant int DEFAULT 0;
+CALL FIND_OPORTUNITIES ( '2020-07-14', 10, 10, 200);      -- maiores altas
 
---
-		DECLARE curStockTrade
-			CURSOR FOR 
-				select  data_cotacao
-					,codigo_negociacao_papel
-  					,preco_abertura
-					,preco_fechamento
-					,total_negocios
-                    ,volume_titulos_negociados
-					from tb_cotacao
-					where codigo_negociacao_papel = stock_code
-					and data_cotacao between start_date and NOW();
+CALL FIND_OPORTUNITIES_DOWN('2020-07-31', -4, 2, 10000);  -- maiores baixas
 
-		-- declare NOT FOUND handler
-		DECLARE CONTINUE HANDLER 
-			FOR NOT FOUND SET finished = 1; 
-/*
-        DROP TEMPORARY TABLE if exists tmp_result ;
-        
-        CREATE TEMPORARY TABLE tmp_result (	data_cotacao varchar(10),
-				codigo_negociacao_papel varchar(12),
-				preco_fechamento_ant decimal(13,2) ,
-				preco_fechamento decimal(13,2) ,
-                result_fechamento decimal (6,2),
-                result_negocios   decimal (6,2),
-			    total_negocios int
-        );
-*/          
-        OPEN curStockTrade;   
-
-        fetch_trading: REPEAT
-           FETCH curStockTrade INTO   wdata_cotacao
-					, wcodigo_negociacao_papel
-   					, wpreco_abertura
-					, wpreco_fechamento
-					, wtotal_negocios
-                    , wvolume_titulos_negociados;
-                    
-            IF finished = 1 THEN 
-				LEAVE fetch_trading;
-		    END IF;
-  
-           IF wtotal_negocios_ant > 0  -- nao é o primeiro fetch
-              THEN
-                 SET wresultado_preco_fechamento = (wpreco_fechamento/wpreco_fechamento_ant - 1) * 100;
-               
-                 SET wresultado_total_negocios = (wtotal_negocios/wtotal_negocios_ant -1) * 100; 
-             
---                 if wresultado_preco_fechamento > price_percent_param AND (wresultado_total_negocios > total_negocios_percent_param or wtotal_negocios > total_negocios_param)  then 
-                 if wresultado_preco_fechamento > price_percent_param AND (wtotal_negocios > total_negocios_param)  then 
-                 insert into tmp_result values ( wdata_cotacao, wcodigo_negociacao_papel, wpreco_fechamento_ant, wpreco_fechamento, wresultado_preco_fechamento, wresultado_total_negocios, wtotal_negocios,wvolume_titulos_negociados);
-                 end if;
-           END IF;        
-           
-           set wpreco_fechamento_ant = wpreco_fechamento;
-           set wtotal_negocios_ant = wtotal_negocios;
-        
-         UNTIL finished = 1 END REPEAT fetch_trading;
-         
-         CLOSE curStockTrade; 
-         
- --       select * from tmp_result;
-       
-END   //
-DELIMITER ;
-
-CALL FIND_OPORTUNITIES ( '2020-08-04', 5, 10, 200);
-
-CALL FIND_OPORTUNITIES_DOWN('2020-08-03', -5, 2, 1000);
-
-CALL FIND_OPORTUNITY ('irbr3', '2020-01-28', 3, 2, 10000);
+CALL FIND_OPORTUNITY ('irbr3', '2020-01-28', 3, 2, 10000);  -- chamado por FIND_OPORTUNITIES ou FIND_OPORTUNITIES_DOWN
 
 
 
@@ -698,3 +841,12 @@ CALL FIND_OPORTUNITY ('irbr3', '2020-01-28', 3, 2, 10000);
 					where data_cotacao between '2020-07-20' and NOW()
                     limit 10;
                     
+
+select  * from tb_intraday_trade 
+		where data_pregao = '2020-07-14' 
+        and hora_negocio > ''
+        order by codigo_negociacao_papel, hora_negocio;
+
+select  min(hora_negocio) from tb_intraday_trade where data_pregao = '2020-07-14' into @wstart_time;
+select @wstart_time;
+
