@@ -10,7 +10,7 @@ codigo_bdi varchar(2),
 codigo_negociacao_papel varchar(12) ,
 tipo_mercado tinyint ,
 nome_resumido_empresa_emissora varchar(12), 
-especificacao_papel varchar(10) ,
+especificacao_papel varchar(10) , 
 prazo_dias_mercado_termo varchar(3), 
 moeda_referencia varchar(4) ,
 preco_abertura decimal(13,2) ,
@@ -129,7 +129,7 @@ CREATE UNIQUE INDEX intraday_trade_ix0 ON tb_intraday_trade (data_pregao , hora_
 -- download page: http://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/cotacoes/cotacoes/
 use b3;
 
-LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\TradeIntraday_20200717_1.txt'
+LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\TradeIntraday_20200714_1.txt'
 IGNORE
 INTO TABLE tb_intraday_trade FIELDS TERMINATED BY ';' LINES TERMINATED BY '\n' IGNORE 1 lines
 ( 
@@ -531,13 +531,13 @@ proc_01:	BEGIN
 					from tb_intraday_trade
 					where data_pregao = start_date
                     and codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
-                    and hora_negocio > wultimo_horario_analisado
+                    and hora_negocio between  wultimo_horario_analisado and wultimo_horario_analisado + interval 5 minute
                     and length(codigo_negociacao_papel) < 7
                     order by data_pregao, hora_negocio
 				;
                 
 		-- declare NOT FOUND handler
-	  DECLARE CONTINUE HANDLER 
+	  DECLARE CONTINUE HANDLER
 		FOR NOT FOUND SET finished = 1;
             
       DECLARE CONTINUE HANDLER
@@ -657,6 +657,7 @@ select @count;
 
 CALL FIND_OPORTUNITY_INTRADAY ('20200717');
 
+SET @start_date = 20200714;
 				select    data_pregao
                         , codigo_negociacao_papel
                         , preco_negocio
@@ -664,11 +665,15 @@ CALL FIND_OPORTUNITY_INTRADAY ('20200717');
                         , hora_negocio
                         , id_negocio
 					from tb_intraday_trade
-					where data_pregao = '20200716'
-                    and hora_negocio >=  0
+					where data_pregao = @start_date
+                    and codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
+                    and hora_negocio between  time(100000) and time(100000) + interval +1 minute
                     and length(codigo_negociacao_papel) < 7
-                    order by data_pregao, hora_negocio;
+                    order by data_pregao, hora_negocio
+				;
         
+SELECT time(100000) + interval +1 minute;  
+
 select count(*) from tb_intraday_trade where   codigo_negociacao_papel = 'TF723';      
         
 select *   from tb_oportunity_intraday order by upOrDownUntilNow desc;
@@ -680,7 +685,7 @@ select *   from tb_oportunity_intraday order by upOrDownUntilNow desc;
                         , hora_negocio
                         , id_negocio
 					from tb_intraday_trade
-					where data_pregao = '20200717'
+					where data_pregao = 20200714
                     and  codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
                     and hora_negocio > 0
                     and length(codigo_negociacao_papel) < 7
@@ -688,7 +693,7 @@ select *   from tb_oportunity_intraday order by upOrDownUntilNow desc;
                     
                     select 'ITUB4' regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}';
                     
-
+select count(*) from tb_intraday_trade where data_pregao = '20200714';
 -- ===========================================================================================================
 use b3;
         DROP TABLE IF EXISTS tb_oportunity_intraday;
