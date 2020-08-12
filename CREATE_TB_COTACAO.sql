@@ -563,6 +563,7 @@ proc_01:	BEGIN
                         , id_negocio
 					from tb_intraday_trade
 					where data_pregao = start_date
+--                    and codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
                     and codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
                     and hora_negocio between  time(wultimo_horario_analisado) and time(wultimo_horario_analisado) + interval +pinterval minute
                     and length(codigo_negociacao_papel) < 7
@@ -597,7 +598,7 @@ proc_01:	BEGIN
 			OPEN curTradeIntraDay; 
         END IF;    
 
---	START TRANSACTION;
+	START TRANSACTION;
     
     fetch_trading: REPEAT
            FETCH curTradeIntraDay INTO   wdata_pregao
@@ -742,7 +743,7 @@ proc_01:	BEGIN
 		 SET COUNT = COUNT + 1;
          
          IF COUNT % 1000 = 0 THEN
---			COMMIT;
+			COMMIT;
             SET COUNT_TOTAL = COUNT_TOTAL + COUNT;
             SET COUNT = 0;
 		 END IF;
@@ -750,23 +751,35 @@ proc_01:	BEGIN
          UNTIL finished = 1 END REPEAT fetch_trading;
          
          SELECT COUNT_TOTAL, ' ', COUNT;
---         COMMIT;
+         COMMIT;
          CLOSE curTradeIntraDay; 
 		SET error_code = 0;
 		SET error_msg = 'Processamento OK!' ;
 END   //
 DELIMITER ;
        
+Set @@GLOBAL.innodb_change_buffering=all;   
+SET autocommit=0;
+
+SET  @@GLOBAL.innodb_buffer_pool_size=32G;
+
+SELECT @@innodb_buffer_pool_size;
+      
 use b3;
-CALL FIND_OPORTUNITY_INTRADAY (20200714,5, @error_code, @error_msg);   -- IMPORTANTE VERIFIQUE LIMIT DE LINHAS RETORNADAS
+set @time_previous = now();
+
+CALL FIND_OPORTUNITY_INTRADAY (20200714,10, @error_code, @error_msg);   -- IMPORTANTE VERIFIQUE LIMIT DE LINHAS RETORNADAS
 select @error_code, @error_msg;
 
+select timediff(now(),@time_previous);
 
 select * from tb_oportunity_intraday_control;
- DELETE from tb_oportunity_intraday_control ;
+ -- DELETE from tb_oportunity_intraday_control ;
 
 select * from tb_oportunity_intraday;
- DELETE from tb_oportunity_intraday;
+ -- DELETE from tb_oportunity_intraday;
+ 
+SELECT @@default_storage_engine;
 
 select count(*) from tb_oportunity_intraday;
 
@@ -778,11 +791,11 @@ select count(*) from tb_oportunity_intraday;
                         , id_negocio
 					from tb_intraday_trade
 					where data_pregao = 20200714
+--                    and codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
                     and codigo_negociacao_papel regexp '^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}$|^[qtweryuiopasdfghjklzxcvbnm]{4}[3456]{1}F$'
-                    and hora_negocio between  100000 and  100100
+                    and hora_negocio between  time(100600) and time(100600) + interval +1 minute
                     and length(codigo_negociacao_papel) < 7
-                    order by data_pregao, hora_negocio
-;
+                    order by data_pregao, hora_negocio;
         
 select *   from tb_oportunity_intraday order by upOrDownUntilNow desc;
 
@@ -817,6 +830,7 @@ use b3;
                 total_same int,  -- número de vezes que o preço nem subiu nem desceu
                 total_down int   -- número de vezes que o preço desceu
         );
+
         
 use b3;
         DROP TABLE IF EXISTS tb_oportunity_intraday_control;
