@@ -128,8 +128,9 @@ select codigo_negociacao_papel, data_pregao, preco_fechamento
 -- ===================================== LOAD --------------------------------------------------------------------
 use b3;
 
-LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\TradeInformationConsolidatedFile_20200727_1.csv'
--- IGNORE
+-- warning when preco_ref = ''
+LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\TradeInformationConsolidatedFile_20200803_1.csv'
+IGNORE
 INTO TABLE pregao_b3 FIELDS TERMINATED BY ';' LINES TERMINATED BY '\r\n' IGNORE 1 lines
 (
 data_pregao  ,
@@ -151,8 +152,9 @@ SET preco_minimo = REPLACE(@preco_minimo, ',', '.')
     , preco_fechamento = REPLACE(@preco_fechamento, ',', '.')
     , preco_cotacao_ajuste = REPLACE(@preco_cotacao_ajuste, ',', '.')
     , preco_ref = REPLACE(@preco_ref, ',', '.')
-    , preco_ref = IFNULL(@preco_ref,0)
 ;
+
+
 SET id = IF(MID(@sldate, 6, 2) = '02', NULL, 1), sldate = @sldate
 -- select *    from pregao_b3 where data_pregao = '20200715' and codigo_negociacao_papel = 'AFSQ20'  and international_securities_id_num ='BRBMEFAFS0J3' ;
 -- select *    from pregao_b3 where data_pregao = '20200715' and codigo_negociacao_papel = 'AFSV20'  and international_securities_id_num ='BRBMEFAFS0L9' ;

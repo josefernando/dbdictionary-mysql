@@ -1,5 +1,75 @@
 use b3;
 
+DROP PROCEDURE IF EXISTS POSICIONA_CURSOR_INTRADAY_BY_STOCK;
+
+DELIMITER //
+CREATE PROCEDURE POSICIONA_CURSOR_INTRADAY_BY_STOCK (IN    pStock_code varchar(12),
+												 INOUT pStart_date varchar(10),
+                                                 OUT   pRestart_time time(3),
+                                                 OUT   pId int,
+                                                 OUT   error_code int,
+                                                 OUT   error_msg  varchar(255))
+proc_00: BEGIN
+    
+	-- Error handling 
+	DECLARE sql_state CHAR(5) DEFAULT '00000';
+	DECLARE sql_msg_text TEXT;
+	DECLARE sql_mysql_error_number int;   
+    
+    DECLARE nrows int;    
+      
+    DECLARE wlast_time time(3);
+    DECLARE wid int;      
+        
+    DECLARE EXIT HANDLER
+		FOR SQLEXCEPTION   -- RETURNED_SQLSTATE not starting with '00', '01' or '02'
+			BEGIN
+			  GET DIAGNOSTICS CONDITION 1
+				  sql_state = RETURNED_SQLSTATE
+                , sql_msg_text = MESSAGE_TEXT
+                , sql_mysql_error_number = MYSQL_ERRNO;
+                
+                SET error_code = sql_mysql_error_number;
+                SET error_msg  = CONCAT( sql_state, ' - ' , sql_msg_text);
+			END; 
+    
+    -- find último id processado
+   SELECT id, last_time into pid,  pRestart_time from tb_oportunity_intraday_control_by_stock
+		   where last_date = pStart_date and codigo_negociacao_papel = pStock_code;
+       
+   SET error_code = 0;
+   SET error_msg  = CONCAT(' Processamento OK');    
+   
+	GET DIAGNOSTICS nrows = ROW_COUNT;
+	IF nrows = 0 then
+		select id, hora_negocio into pId,  pRestart_time
+			from tb_intraday_trade
+			where data_pregao = pStart_date
+			and codigo_negociacao_papel = pStock_code
+			order by id, data_pregao, hora_negocio limit 1;
+			
+			GET DIAGNOSTICS nrows = ROW_COUNT;
+			IF nrows = 0 THEN
+                SET pRestart_time = null;
+                SET pId = null;
+				SET error_code = 1;
+				SET error_msg  = CONCAT(' Não existe negociações para esta data: ', pStart_date);
+				leave proc_00;
+			END IF;
+	END IF;    
+
+END //
+DELIMITER ;
+
+SET @start_date = 20200902;
+
+CALL POSICIONA_CURSOR_INTRADAY_BY_STOCK ('IRBR3', @start_date , @restart_time, @id, @error_code, @error_msg);
+
+select @restart_time, @id, @error_code, @error_msg;
+
+-- =========================================================================================================
+use b3;
+
 DROP PROCEDURE IF EXISTS FIND_REPROCESSOR_TIME_INTRADAY;
 
 DELIMITER //
@@ -10,6 +80,9 @@ CREATE PROCEDURE FIND_REPROCESSOR_TIME_INTRADAY (INOUT pStart_date varchar(10)
 proc_00: BEGIN
 	-- handle vars
     DECLARE finished int DEFAULT 0;
+    
+
+ 
     
     -- select into 
     DECLARE wData_pregao date;
