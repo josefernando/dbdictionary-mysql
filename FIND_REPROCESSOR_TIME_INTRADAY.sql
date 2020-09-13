@@ -239,4 +239,350 @@ select * from tb_oportunity_intraday_control;
         
         insert  into  tb_oportunity_intraday_control values(
                        20200714, 101313, 'ARZZ3', 2590);
-use b3
+
+-- ====================================================================================================================
+ USE b3;
+
+ DROP PROCEDURE IF EXISTS FIND_OPORTUNITY_INTRADAY_BY_STOCK;
+
+DELIMITER //
+CREATE PROCEDURE FIND_OPORTUNITY_INTRADAY_BY_STOCK (stock_code varchar(12), start_date varchar(10), pinterval int, OUT error_code int, OUT error_msg varchar(255))
+proc_01:	BEGIN
+        -- working vars
+		DECLARE finished INTEGER DEFAULT 0;
+    DECLARE dup_key INTEGER DEFAULT 0;
+
+		DECLARE COUNT integer DEFAULT 0;
+        DECLARE COUNT_TOTAL integer DEFAULT 0;
+        -- 
+        
+        DECLARE wcount int;
+        
+        -- into vars
+			DECLARE wcodigo_negociacao_papel varchar(30);
+		  DECLARE wpreco_negocio decimal(13,3);
+   		DECLARE whorario_primeiro_negocio time(3);
+		  DECLARE wtitulos_negociados int;
+		  DECLARE whora_negocio time(3);
+      DECLARE wid_negocio int;
+		  DECLARE wdata_pregao date;
+      DECLARE wultimo_horario_analisado time(3);
+      
+         DECLARE wmenor_preco    decimal(13,3);
+         DECLARE whora_menor_preco time(3);
+         DECLARE wid_menor_preco int;
+         DECLARE wmaior_preco    decimal(13,3);
+         DECLARE wid_maior_preco int;
+         DECLARE whora_maior_preco time(3);
+        
+        DECLARE wlast_date date;
+        DECLARE wlast_time time(3);
+        DECLARE wlast_codigo_negociacao_papel varchar(12);
+        DECLARE wlast_id_trade int;
+        
+         DECLARE wid int;
+        
+         DECLARE woportunity_data_trade date;
+         DECLARE woportunity_horario_primeiro_negocio time(3);
+         DECLARE woportunity_ultimo_horario_analisado time(3);
+		     DECLARE woportunity_codigo_negociacao_papel varchar(12);
+         DECLARE woportunity_preco_abertura decimal(13,3);
+         DECLARE woportunity_menor_preco    decimal(13,3);
+         DECLARE woportunity_hora_menor_preco time(3);
+         DECLARE woportunity_id_menor_preco int;
+         DECLARE woportunity_maior_preco    decimal(13,3);
+         DECLARE woportunity_id_maior_preco int;
+         DECLARE woportunity_hora_maior_preco time(3);
+         DECLARE woportunity_ultimo_preco decimal(13,3);
+         DECLARE woportunity_ultimo_id    int ;   
+		     DECLARE woportunity_titulos_negociados int;
+         DECLARE woportunity_UpOrDownUntilNow decimal(13,3);
+         DECLARE woportunity_total_up int;    
+         DECLARE woportunity_total_same int;    
+         DECLARE woportunity_total_down int;
+        
+        -- ========================================================================================
+        -- algorith vars
+        DECLARE wresultado_preco_negocio decimal(13,3) DEFAULT 0;
+       	DECLARE wUpOrDown decimal(13,3);
+        DECLARE wUpOrDownUntilNow decimal(13,3);
+        DECLARE wtotal_up int;
+        DECLARE wtotal_same int;
+        DECLARE wtotal_down int;
+        
+        -- ============================================================================================
+        
+        -- Error handling 
+          DECLARE sql_state CHAR(5) DEFAULT '00000';
+		      DECLARE sql_msg_text TEXT;
+          DECLARE sql_mysql_error_number int;
+          DECLARE sql_exception boolean DEFAULT false;
+		      DECLARE nrows INT;
+		      DECLARE result TEXT;
+
+--
+		DECLARE curTradeIntraDay
+			CURSOR FOR 
+				select    id
+								, data_pregao
+								, codigo_negociacao_papel
+								, preco_negocio
+								, titulos_negociados
+								, hora_negocio
+								, id_negocio
+					from tb_intraday_trade_daily
+					where data_pregao = start_date
+						and codigo_negociacao_papel =  stock_code
+						and id > wid 
+						and hora_negocio < time(wultimo_horario_analisado) + interval +pinterval minute
+					order by id, data_pregao, hora_negocio
+				;
+                
+	  -- declare NOT FOUND handler
+	  DECLARE CONTINUE HANDLER
+				FOR NOT FOUND SET finished = 1;
+        
+    DECLARE CONTINUE HANDLER FOR 1022   -- Error number: 1022; Symbol: ER_DUP_KEY; SQLSTATE: 23000
+					BEGIN
+          SET dup_key = 1;
+					END;
+            
+    DECLARE EXIT HANDLER
+		FOR SQLEXCEPTION   -- RETURNED_SQLSTATE not starting with '00', '01' or '02'
+			BEGIN
+			  GET DIAGNOSTICS CONDITION 1
+				  sql_state = RETURNED_SQLSTATE
+                , sql_msg_text = MESSAGE_TEXT
+                , sql_mysql_error_number = MYSQL_ERRNO;
+                
+                SET error_code = sql_mysql_error_number;
+                SET error_msg  = CONCAT( sql_state, ' - ' , sql_msg_text);
+                set sql_exception = true;
+			END;      
+      
+	select id, last_time into wid,  wLast_time from tb_oportunity_intraday_control_by_stock
+				where last_date = start_date
+							and codigo_negociacao_papel = stock_code;
+ 
+	if finished = 1 then
+	   SET finished = 0;
+	   SET wid = 0;
+	   SET wLast_time = '09:59:59.999';
+       
+     insert into tb_oportunity_intraday_control_by_stock values (wid, start_date, wLast_time, stock_code , null);
+     
+     if dup_key = 1 then 
+				SET error_msg = CONCAT('Registro de controle já existe para a data: ', start_date);
+				SET error_code = 1022;
+				leave proc_01;
+     end if;
+
+       GET DIAGNOSTICS nrows = ROW_COUNT;
+		  if nrows = 0 then
+			SET error_msg = 'Zero linhas inseridas tabela de controle';
+            SET error_code = 8000;
+            leave proc_01;
+          end if;
+	end if;
+									
+	SET wultimo_horario_analisado = wLast_time;
+
+	OPEN curTradeIntraDay; 
+
+	START TRANSACTION;
+    fetch_trading: REPEAT
+           FETCH curTradeIntraDay INTO   wid
+                        , wdata_pregao
+                        , wcodigo_negociacao_papel
+                        , wpreco_negocio
+                        , wtitulos_negociados
+                        , whora_negocio
+                        , wid_negocio;
+
+        IF finished = 1 THEN   
+					IF COUNT_TOTAL = 0 THEN
+              select id into wid from tb_oportunity_intraday_control_by_stock 
+										 where last_date = start_date
+												and codigo_negociacao_papel = stock_code;
+                        
+              if finished = 1 then
+              	SET error_code = 9;
+								SET error_msg = 'Erro na leitura inicial do registro de controle! ' ;
+                LEAVE proc_01;
+              end if ;
+                        
+              if wid = 0 then
+								SET error_code = 1;
+								SET error_msg = 'Sem Transações para o período! ' ;
+              else 
+								SET error_code = 8;
+								SET error_msg = CONCAT('todas as transações processadas para a data: ', start_date) ;                
+              end if;
+							LEAVE proc_01;
+					ELSE 
+							LEAVE fetch_trading;
+					END IF;   
+			END IF;
+
+			select * into woportunity_data_trade,
+                woportunity_horario_primeiro_negocio,
+                woportunity_ultimo_horario_analisado,
+				        woportunity_codigo_negociacao_papel,
+                woportunity_preco_abertura,
+								woportunity_menor_preco,    
+								woportunity_hora_menor_preco,
+								woportunity_id_menor_preco, 
+								woportunity_maior_preco,    
+								woportunity_id_maior_preco, 
+								woportunity_hora_maior_preco,              
+                woportunity_ultimo_preco,
+                woportunity_ultimo_id,
+			          woportunity_titulos_negociados,
+                woportunity_UpOrDownUntilNow,
+                woportunity_total_up,    
+                woportunity_total_same,    
+                woportunity_total_down 
+                from tb_oportunity_intraday_by_stock
+                where codigo_negociacao_papel = stock_code;
+
+			IF finished = 1 THEN   -- primeira transação da  ação para a data
+					SET finished = 0;
+					INSERT INTO tb_oportunity_intraday_by_stock VALUES (
+							  wdata_pregao
+              , whora_negocio     -- primeiro negocio  
+							, whora_negocio     -- ultimo negocio
+							, wcodigo_negociacao_papel
+							, wpreco_negocio
+ 							, wpreco_negocio    -- menor preco
+ 							, wid_negocio       -- id menor preco
+							, whora_negocio     -- hora menor preço
+ 							, wpreco_negocio    -- maior preco
+ 							, wid_negocio       -- id maior preco
+							, whora_negocio     -- hora maior preço              
+							, wpreco_negocio
+							, wid_negocio 
+							, wtitulos_negociados
+							, 0           -- UpOrDownUntilNow
+							, 0           -- total_up
+							, 0           -- = same
+							, 0);         -- total_down
+				   
+				   GET DIAGNOSTICS nrows = ROW_COUNT;
+				   if nrows = 0 then
+						 SET error_msg = 'Zero linhas inseridasna tabela de controle';
+						 SET error_code = 8001;
+						 leave proc_01;
+					 END IF;
+    ELSE      -- transações already exists
+        -- =================================================================================
+        			if wpreco_negocio < woportunity_menor_preco then
+								SET woportunity_menor_preco = wpreco_negocio;
+              	SET woportunity_hora_menor_preco = whora_negocio;
+								SET woportunity_id_menor_preco = wid_negocio;
+              end if;
+        			if wpreco_negocio > woportunity_maior_preco then
+								SET woportunity_maior_preco = wpreco_negocio;
+              	SET woportunity_hora_maior_preco = whora_negocio;
+								SET woportunity_id_maior_preco = wid_negocio;
+              end if;
+        -- =================================================================================
+    
+				SET wUpOrDown = (wpreco_negocio / woportunity_ultimo_preco - 1) * 100;
+        SET wUpOrDownUntilNow = (wpreco_negocio / woportunity_preco_abertura - 1) * 100;
+
+				IF wUpOrDown > 0 THEN
+						SET woportunity_total_up =  woportunity_total_up + 1;
+				ELSEIF wUpOrDown < 0 THEN
+						SET woportunity_total_down =  woportunity_total_down + 1;
+				ELSEIF wUpOrDown = 0 THEN
+                        SET woportunity_total_same = woportunity_total_same + 1;
+				END IF;
+                
+				UPDATE tb_oportunity_intraday_by_stock
+					SET ultimo_horario_analisado = whora_negocio,
+							menor_preco = woportunity_menor_preco,
+							hora_menor_preco = woportunity_hora_menor_preco,
+							id_menor_preco = woportunity_id_menor_preco,
+							maior_preco = woportunity_maior_preco,
+							id_maior_preco = woportunity_id_maior_preco,
+							hora_maior_preco = woportunity_hora_maior_preco,
+							ultimo_preco = wpreco_negocio,
+							titulos_negociados = woportunity_titulos_negociados + wtitulos_negociados,
+							ultimo_id = wid_negocio,
+							resultado_ate_agora = wUpOrDownUntilNow,
+							total_up  = woportunity_total_up, 
+							total_same = woportunity_total_same,
+							total_down = woportunity_total_down
+                    WHERE codigo_negociacao_papel = wcodigo_negociacao_papel;
+              
+			   if nrows = 0 then
+				 SET error_msg = 'Zero linhas atualizadas tabela de oportunidades';
+				 SET error_code = 8002;
+				 leave proc_01;
+			   end if;
+		  END IF;
+              
+		  UPDATE tb_oportunity_intraday_control_by_stock
+				SET id = wid,
+					last_time = whora_negocio,
+					last_id = wid_negocio
+					WHERE last_date = wdata_pregao
+                and codigo_negociacao_papel = stock_code;
+              
+			   if nrows = 0 then
+				 SET error_msg = 'Zero linhas atualizadas tabela de controle';
+				 SET error_code = 8003;
+				 leave proc_01;
+			   end if;
+
+		 SET COUNT = COUNT + 1;
+         
+         IF COUNT % 1000 = 0 THEN
+						COMMIT;
+            SET COUNT_TOTAL = COUNT_TOTAL + COUNT;
+            SET COUNT = 0;
+				END IF;
+
+   UNTIL finished = 1 END REPEAT fetch_trading;
+
+   COMMIT;
+   CLOSE curTradeIntraDay; 
+         
+   SET error_code = 0;
+	 SET error_msg = 'Processamento OK!' ;
+END   //
+DELIMITER ;
+
+-- ====================================== EXECUTION ===============================================================
+use b3;
+
+Set @@GLOBAL.innodb_change_buffering=all;   
+SET autocommit=0;
+
+SET @stock_code = 'VVAR3';
+SET @date_param = '20200911';
+SET @interval_param = 15;
+set @time_previous = now();
+CALL FIND_OPORTUNITY_INTRADAY_BY_STOCK ( @stock_code, @date_param , @interval_param, @error_code, @error_msg);   -- IMPORTANTE VERIFIQUE LIMIT DE LINHAS RETORNADAS
+select @error_code, @error_msg;
+select timediff(now(),@time_previous);
+
+-- AMBOS OS INSERTS PRECISAM SER RODADOS
+INSERT INTO tb_oportunity_intraday_result_by_stock
+		SELECT *  FROM tb_oportunity_intraday_by_stock
+        where codigo_negociacao_papel NOT IN (select distinct codigo_negociacao_papel from  tb_oportunity_intraday_result_by_stock
+												where data_trade = @date_param)
+                                                and data_trade = @date_param;
+INSERT INTO tb_oportunity_intraday_result_by_stock
+   		SELECT  distinct t1.*  FROM tb_oportunity_intraday_by_stock t1
+             inner JOIN tb_oportunity_intraday_result_by_stock t2
+             ON t1.codigo_negociacao_papel = t2.codigo_negociacao_papel and t1.data_trade = t2.data_trade
+	         where t1.ultimo_id not in (select ultimo_id from tb_oportunity_intraday_result_by_stock t3
+                                        where t3.ultimo_id = t1.ultimo_id);
+
+-- ==================================================================================================================
+
+use b3;
+
+select * from     tb_oportunity_intraday_by_stock
+
