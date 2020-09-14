@@ -1200,24 +1200,27 @@ use b3;
                 id int,
                 last_date date,
                 last_time time(3),
-				last_codigo_negociacao_papel varchar(12),
+				        last_codigo_negociacao_papel varchar(12),
                 last_id      int
         ); 
         
 CREATE unique INDEX oportunity_intraday_control_ix ON tb_oportunity_intraday_control (last_date);
 
+-- ================================================================================================================
 
 use b3;
         DROP TABLE IF EXISTS tb_oportunity_intraday_control_by_stock;
         CREATE TABLE tb_oportunity_intraday_control_by_stock (
                 id int,
+                next_start_time time(3),
                 last_date date,
                 last_time time(3),
-                         				codigo_negociacao_papel varchar(12),
-                last_id      int
+                codigo_negociacao_papel varchar(12),
+                last_trade_id      int
         ); 
         
 CREATE unique INDEX oportunity_intraday_control_by_stock_ix ON tb_oportunity_intraday_control_by_stock (last_date, codigo_negociacao_papel);
+CREATE unique INDEX oportunity_intraday_control_by_stock_ix1 ON tb_oportunity_intraday_control_by_stock (codigo_negociacao_papel);
 
 commit;        
 -- ================================================================================================================
