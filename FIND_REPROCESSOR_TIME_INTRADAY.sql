@@ -284,6 +284,7 @@ proc_01:	BEGIN
         DECLARE wlast_id_trade int;
         
          DECLARE wid int;
+         DECLARE wlast_trade_id int;
         
          DECLARE woportunity_data_trade date;
          DECLARE woportunity_horario_primeiro_negocio time(3);
@@ -336,7 +337,8 @@ proc_01:	BEGIN
 					from tb_intraday_trade_daily
 					where data_pregao = start_date
 						and codigo_negociacao_papel =  stock_code
-						and id > wid 
+--						and id > wid 
+						and id_negocio > wlast_trade_id
 --						and hora_negocio < time(wultimo_horario_analisado) + interval +pinterval minute
 						and hora_negocio < time(wnext_start_time)
 					order by id, data_pregao, hora_negocio
@@ -364,12 +366,7 @@ proc_01:	BEGIN
                 set sql_exception = true;
 			END;      
 
-/*      
-	select id, last_time into wid,  wLast_time from tb_oportunity_intraday_control_by_stock
-				where last_date = start_date
-							and codigo_negociacao_papel = stock_code;
- */
- 	select id, next_start_time, last_time into wid,  wnext_start_time, wultimo_horario_analisado from tb_oportunity_intraday_control_by_stock
+ 	select id, next_start_time, last_time , last_trade_id into wid,  wnext_start_time, wultimo_horario_analisado, wlast_trade_id from tb_oportunity_intraday_control_by_stock
 				where last_date = start_date and codigo_negociacao_papel = stock_code;
  
 	if finished = 1 then
@@ -377,7 +374,7 @@ proc_01:	BEGIN
 	   SET wid = 0;
      SET wnext_start_time = '10:00:00.000';
      SET wultimo_horario_analisado = '10:00:00.000';
-     insert into tb_oportunity_intraday_control_by_stock values (wid, wnext_start_time , start_date, wultimo_horario_analisado, stock_code , null);
+     insert into tb_oportunity_intraday_control_by_stock values (wid, wnext_start_time , start_date, wultimo_horario_analisado, stock_code , 0);
      
      if dup_key = 1 then 
 				SET error_msg = CONCAT('Registro de controle já existe para a data: ', start_date);
@@ -394,10 +391,11 @@ proc_01:	BEGIN
 	end if;
 	
   SET wnext_start_time =  time(wnext_start_time) + interval +pinterval minute;
-
+  
+/*
   UPDATE tb_oportunity_intraday_control_by_stock SET next_start_time = wnext_start_time
 		where last_date = start_date and codigo_negociacao_papel = stock_code;
-
+*/
 	OPEN curTradeIntraDay; 
 
 	START TRANSACTION;
@@ -413,27 +411,19 @@ proc_01:	BEGIN
         IF finished = 1 THEN  
           SET finished = 0;
 					IF COUNT_TOTAL = 0 THEN
-              select id into wid from tb_oportunity_intraday_control_by_stock 
+             select id into wid from tb_oportunity_intraday_control_by_stock 
 										 where last_date = start_date
 												and codigo_negociacao_papel = stock_code;
                         
-             if finished = 1 then
+             IF finished = 1 then
               	SET error_code = 9;
 								SET error_msg = 'Erro na leitura inicial do registro de controle! ' ;
                 LEAVE proc_01;
-             end if ;
-/*                        
-              if wid = 0 then
-								SET error_code = 1;
-								SET error_msg = 'Sem Transações para o período! ' ;
-              else 
-								SET error_code = 8;
-								SET error_msg = CONCAT('Todas as transações processadas para a data: ', start_date) ;                
-              end if;
-*/
-								SET error_code = 8;
-								SET error_msg = CONCAT('Sem transações para a data: ', start_date , ' e horário: ' , wultimo_horario_analisado , ' - ' , wnext_start_time ) ;                
-							LEAVE proc_01;
+             END IF ;
+
+						 SET error_code = 8;
+						 SET error_msg = CONCAT('Sem transações para a data: ', start_date , ' e horário: ' , wultimo_horario_analisado , ' - ' , wnext_start_time ) ;                
+						 LEAVE proc_01;
 					ELSE 
 							LEAVE fetch_trading;
 					END IF;   
@@ -539,9 +529,10 @@ proc_01:	BEGIN
               
 		  UPDATE tb_oportunity_intraday_control_by_stock
 				SET id = wid,
-					last_time = whora_negocio,
-					last_trade_id = wid_negocio
-					WHERE last_date = wdata_pregao
+					  last_time = whora_negocio,
+					  last_trade_id = wid_negocio,
+            next_start_time =  time(whora_negocio) + interval +1 second_microsecond
+					WHERE last_date = wdata_pregao  
                 and codigo_negociacao_papel = stock_code;
               
 			   if nrows = 0 then
@@ -575,9 +566,9 @@ use b3;
 Set @@GLOBAL.innodb_change_buffering=all;   
 SET autocommit=0;
 
-SET @stock_code = 'YDUQ3';
-SET @date_param = '20200910';
-SET @interval_param = 15;
+SET @stock_code = 'TIET3';
+SET @date_param = '20200914';
+SET @interval_param = 30;
 set @time_previous = now();
 CALL FIND_OPORTUNITY_INTRADAY_BY_STOCK ( @stock_code, @date_param , @interval_param, @error_code, @error_msg);   -- IMPORTANTE VERIFIQUE LIMIT DE LINHAS RETORNADAS
 select @error_code, @error_msg;
@@ -597,6 +588,22 @@ INSERT INTO tb_oportunity_intraday_result_by_stock
                                         where t3.ultimo_id = t1.ultimo_id);
 -- ==================================================================================================================
 
+				select    id
+								, data_pregao
+								, codigo_negociacao_papel
+								, preco_negocio
+								, titulos_negociados
+								, hora_negocio
+								, id_negocio
+					from tb_intraday_trade_daily
+					where data_pregao = '20200914'
+						and codigo_negociacao_papel =  @stock_code
+						and id_negocio > 0
+						and hora_negocio < time('10:00:00.000') + interval +30 minute
+					order by id, data_pregao, hora_negocio
+				;
+
+-- ===========================================================================================================
 -- truncate tb_oportunity_intraday_control_by_stock;
 select id  from tb_oportunity_intraday_control_by_stock 
 			 where last_date = @date_param
@@ -604,18 +611,20 @@ select id  from tb_oportunity_intraday_control_by_stock
           
 select * from   tb_oportunity_intraday_control_by_stock;        
 
-select * from tb_intraday_trade_daily where codigo_negociacao_papel = 'YDUQ3';
+select * from tb_intraday_trade_daily where codigo_negociacao_papel = 'TIET3';
 
-
+select * from tb_intraday_trade_daily where data_pregao = '20200914' limit 1;
 -- ==================================================================================================================
 use b3;
 
 select *  from tb_oportunity_intraday_control_by_stock;
 
--- delete from tb_oportunity_intraday_control_by_stock;
+ -- delete from tb_oportunity_intraday_control_by_stock where codigo_negociacao_papel = 'ADHM3';
 
  -- truncate tb_oportunity_intraday_by_stock;
 select * from     tb_oportunity_intraday_by_stock;
 
  -- truncate tb_oportunity_intraday_result_by_stock;
-select * from tb_oportunity_intraday_result_by_stock;
+select * from tb_oportunity_intraday_result_by_stock where codigo_negociacao_papel = 'BEEF3';
+
+commit;

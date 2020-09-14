@@ -4,6 +4,8 @@ use b3;
 
 truncate tb_intraday_trade_staging;
 
+
+
 LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\TradeIntraday_20200904_1.txt'
 -- IGNORE
 INTO TABLE tb_intraday_trade_staging FIELDS TERMINATED BY ';' LINES TERMINATED BY '\n' IGNORE 1 lines
@@ -55,7 +57,7 @@ UNLOCK TABLES;
 -- =======================================================================================================================
 use b3;
 
--- truncate tb_intraday_trade_daily;
+truncate tb_intraday_trade_daily;
 -- C:\workspace\antlr\bolsab3\src\main\java\br\com\recatalog\bolsab3\util\PreparaLoadIntradayTrade.java 
 LOAD DATA INFILE 'C:\\Download\\Bolsa_de_Valores_Dados\\b3_dados\\intraday\\20200910_102025\\TradeIntraday_TIET11_20200903_1.LOAD'
 -- IGNORE
@@ -81,6 +83,11 @@ data_pregao
 ;
 
 select count(*) from tb_intraday_trade_daily;
+
+select * from tb_intraday_trade_daily where codigo_negociacao_papel = 'VIVR3';
+
+select * from tb_intraday_trade_daily order by  data_pregao , hora_negocio, id  limit 5;
+
 select * from tb_intraday_trade_daily where codigo_negociacao_papel = 'TIET4';
 
 -- =======================================================================================================================
