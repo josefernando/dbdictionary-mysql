@@ -1220,8 +1220,11 @@ use b3;
         ); 
         
 CREATE unique INDEX oportunity_intraday_control_by_stock_ix ON tb_oportunity_intraday_control_by_stock (last_date, codigo_negociacao_papel);
-CREATE unique INDEX oportunity_intraday_control_by_stock_ix1 ON tb_oportunity_intraday_control_by_stock (codigo_negociacao_papel);
+CREATE  INDEX oportunity_intraday_control_by_stock_ix1 ON tb_oportunity_intraday_control_by_stock (codigo_negociacao_papel);
 
+-- DROP INDEX oportunity_intraday_control_by_stock_ix1 ON tb_oportunity_intraday_control_by_stock;
+
+ 
 commit;        
 -- ================================================================================================================
 
