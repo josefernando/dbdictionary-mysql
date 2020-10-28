@@ -379,7 +379,7 @@ select  data_cotacao
 		and codigo_negociacao_papel = 'PMAM3';
 -- ======================================================================================================================
 
-LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_D04082020.LOAD'  
+LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_D01102020.LOAD'  
 -- ignore
 INTO TABLE tb_trade_daily_fechamento FIELDS TERMINATED BY ',' LINES TERMINATED BY '\r\n' 
 ( 
@@ -417,14 +417,22 @@ SET preco_negocio = REPLACE(@preco_negocio, ',', '.'),
 ;
 
 ;
+-- ======================================================================================================================
+select data_cotacao, (preco_fechamento/preco_abertura - 1) * 100 AS RENTABILIDADE, preco_fechamento from tb_cotacao where codigo_negociacao_papel = 'mmxm11' and data_cotacao > '20200930';
 
-        
+SELECT distinct DATE_FORMAT(data_cotacao,'%Y%m%d') AS date FROM tb_cotacao where data_cotacao > '20200831';
+
+select * from tb_cotacao limit 1;        
 -- ======================================================================================================================        
  -- truncate table tb_cotacao;
 
-select count(*) from  tb_cotacao;
+select * from  tb_cotacao limit 1;
 
-LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_D04082020.LOAD'  
+
+-- ==========================================LOAD OUTUBRO =========================================================================
+-- C:\workspace\antlr\util\src\main\java\br\com\recatalog\util\B3LoadHistoricData.java
+
+LOAD DATA INFILE 'C:\\ProgramData\\MySQL\\MySQL Server 8.0\\Uploads\\COTAHIST_D26102020.LOAD'  
 -- ignore
 INTO TABLE tb_cotacao FIELDS TERMINATED BY ',' LINES TERMINATED BY '\r\n' 
 ( 
@@ -454,7 +462,7 @@ preco_exercio_pontos,
 codigo_interno_papel,
 numero_distrib_papel
 );
-
+-- ===========================================================================================================
 select max(data_cotacao) from tb_cotacao;
 -- ===========================================================================================================
 /*
@@ -1266,6 +1274,8 @@ use b3;
                 horario_primeiro_negocio time(3) not null,
                 ultimo_horario_analisado time(3) not null,
 				        codigo_negociacao_papel varchar(12) not null,
+                preco_fechamento_previous_trade decimal(13,3) not null,
+                hora_fechamento_previous_trade time(3) not null,
                 preco_abertura decimal(13,3) not null,
                 primeiro_preco_intervalo decimal(13,3) not null,
                 menor_preco    decimal(13,3) not null,
@@ -1279,6 +1289,7 @@ use b3;
 			          titulos_negociados int not null,
                 resultado_intervalo decimal(13,3) not null,
                 resultado_ate_agora decimal(13,3) not null,
+                resultado_previous_trade decimal(13,3) not null,
                 total_up int not null,    -- número de vezes que o preço subiu
                 total_same int not null,  -- número de vezes que o preço nem subiu nem desceu
                 total_down int not null   -- número de vezes que o preço desceu
@@ -1382,11 +1393,13 @@ CREATE INDEX oportunity_intraday_result_by_stock_historic_ix2 ON tb_oportunity_i
 -- commit;
 -- ==================================================================================================
 use b3;
-      -- DROP TABLE IF EXISTS tb_oportunity_intraday_result_by_stock;
+        -- DROP TABLE IF EXISTS tb_oportunity_intraday_result_by_stock;
         CREATE TABLE tb_oportunity_intraday_result_by_stock  ( data_trade date ,
                 horario_primeiro_negocio time(3),
                 ultimo_horario_analisado time(3),
 				        codigo_negociacao_papel varchar(12),
+                preco_fechamento_previous_trade decimal(13,3) not null,
+                hora_fechamento_previous_trade time(3) not null,
                 preco_abertura decimal(13,3) ,
                 primeiro_preco_intervalo decimal(13,3) not null,
                 menor_preco    decimal(13,3) not null,
@@ -1400,6 +1413,7 @@ use b3;
 			          titulos_negociados int ,
                 resultado_intervalo decimal(13,3),
                 resultado_ate_agora decimal(13,3),
+                resultado_previous_trade decimal(13,3) not null,
                 total_up int,    -- número de vezes que o preço subiu
                 total_same int,  -- número de vezes que o preço nem subiu nem desceu
                 total_down int   -- número de vezes que o preço desceu
@@ -1410,6 +1424,7 @@ CREATE INDEX oportunity_intraday_result_by_stock_ix1 ON tb_oportunity_intraday_r
 CREATE INDEX oportunity_intraday_result_by_stock_ix2 ON tb_oportunity_intraday_result_by_stock (ultimo_id);
 
 -- commit;
+-- ==================================================================================================
 -- ==================================================================================================
         
 use b3;
@@ -1436,8 +1451,8 @@ use b3;
                 last_trade_id      int
         ); 
         
-CREATE unique INDEX oportunity_intraday_control_by_stock_ix ON tb_oportunity_intraday_control_by_stock (last_date, codigo_negociacao_papel);
-CREATE  INDEX oportunity_intraday_control_by_stock_ix1 ON tb_oportunity_intraday_control_by_stock (codigo_negociacao_papel);
+CREATE unique INDEX tb_oportunity_intraday_control_by_stock_ix ON tb_oportunity_intraday_control_by_stock (last_date, codigo_negociacao_papel);
+CREATE  INDEX tb_oportunity_intraday_control_by_stock_ix1 ON tb_oportunity_intraday_control_by_stock (codigo_negociacao_papel);
 -- ================================================================================================================
 use b3;
         -- DROP TABLE IF EXISTS tb_oportunity_intraday_control_by_stock_historic;
